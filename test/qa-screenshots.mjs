@@ -5,22 +5,17 @@
  *
  * Usage: node qa-screenshots.mjs
  */
-import { chromium } from "@playwright/test";
-import { spawn } from "node:child_process";
 import fs from "node:fs";
+import { launchBrowser, loadModel, startServer, VIEWPORT } from "./helpers.mjs";
 
-const FIXTURE = "C:\\Users\\ASinha\\OneDrive - Laing ORourke\\Documents\\SWC\\Job\\Solving Dataset\\2hwx0208ac1_run\\input\\2HWX0208AC1.ifc";
 const OUT = "qa-screenshots";
 fs.mkdirSync(OUT, { recursive: true });
 
-const server = spawn("node", ["serve.mjs", "8179"], { stdio: "ignore" });
-await new Promise((r) => setTimeout(r, 1500));
-
-const browser = await chromium.launch({ channel: "msedge", headless: true, args: ["--enable-unsafe-swiftshader"] });
-const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
-await page.goto("http://localhost:8179");
-await page.setInputFiles("#file-input", FIXTURE);
-await page.waitForFunction(() => window.ifcModel?.elements.size > 0);
+const server = await startServer(8179);
+const browser = await launchBrowser();
+const page = await browser.newPage({ viewport: VIEWPORT });
+await page.goto(server.url);
+await loadModel(page);
 await page.waitForTimeout(800);
 await page.screenshot({ path: `${OUT}/1-loaded-iso.png` });
 
@@ -55,5 +50,5 @@ await page.waitForTimeout(200);
 await page.screenshot({ path: `${OUT}/6-armf-tab.png` });
 
 await browser.close();
-server.kill();
+server.stop();
 console.log("Screenshots written to test/qa-screenshots/");

@@ -38,6 +38,10 @@ Screenshots of the checked states are in `test/qa-screenshots/`
 - ✅ "+" adds a free-text Module/Value row; "−" removes an added row (row 1 has no remove button)
 - ✅ Edits autosave on keystroke; reload restores them (same file + element)
 
+## Round-trip
+- ✅ Re-importing an exported `-SZC.ifc` shows a single SZC-ARMF tab, seeded with the exported values
+- ✅ Loading a corrupt file leaves the current model intact (error alert only)
+
 ## Export
 - ✅ Export downloads `2HWX0208AC1-SZC.ifc`
 - ✅ File is valid STEP text (`ISO-10303-21` … `END-ISO-10303-21;`)

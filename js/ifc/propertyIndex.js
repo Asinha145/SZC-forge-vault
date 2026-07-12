@@ -21,7 +21,7 @@
  */
 import { WebIFC } from "./modelLoader.js";
 
-export const EMPTY_VALUE_LABEL = "(empty)";
+const EMPTY_VALUE_LABEL = "(empty)";
 
 export function buildPropertyIndex(api, modelID, elementIDs) {
   const elements = new Map();

@@ -26,10 +26,17 @@ const MIME = {
 };
 
 http.createServer((req, res) => {
-  const urlPath = decodeURIComponent(new URL(req.url, "http://localhost").pathname);
+  let urlPath;
+  try {
+    urlPath = decodeURIComponent(new URL(req.url, "http://localhost").pathname);
+  } catch {
+    res.writeHead(400).end("Bad request"); // malformed percent-encoding
+    return;
+  }
   let filePath = path.join(ROOT, urlPath === "/" ? "index.html" : urlPath);
-  // stay inside the project root
-  if (!filePath.startsWith(ROOT)) {
+  // stay inside the project root (trailing sep so a sibling dir whose name
+  // shares the root's prefix can't slip through)
+  if (filePath !== path.join(ROOT, "index.html") && !filePath.startsWith(ROOT + path.sep)) {
     res.writeHead(403).end("Forbidden");
     return;
   }

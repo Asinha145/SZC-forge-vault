@@ -4,9 +4,13 @@
  * - IFC is Z-up, so camera.up is +Z (except plan views, where the up vector
  *   must not be parallel to the view direction).
  * - Perspective and orthographic cameras coexist; toggling swaps which one
- *   the single OrbitControls instance drives, syncing position/target/size.
+ *   the single OrbitControls instance drives, syncing position/target/size
+ *   (accumulated orthographic zoom converts back into camera distance).
  * - Selection highlight = material swap to one shared "selected" material;
- *   hide = mesh.visible. Both are O(changed elements), no geometry rebuilds.
+ *   hide = mesh.visible. Both are applied as deltas against the previous
+ *   sets, so a one-element change touches one mesh — no geometry rebuilds.
+ * - Rendering is on-demand: frames are drawn only after camera movement or
+ *   a display-state change, so an idle tab does no GPU work.
  */
 import * as THREE from "three";
 import { OrbitControls } from "../../lib/OrbitControls.js";
@@ -24,6 +28,10 @@ const VIEW_DIRS = {
 };
 
 export class Viewer {
+  #prevSelected = new Set();
+  #prevHidden = new Set();
+  #needsRender = true;
+
   constructor(container) {
     this.container = container;
     this.meshes = new Map(); // expressID -> THREE.Mesh
@@ -58,6 +66,7 @@ export class Viewer {
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = false;
+    this.controls.addEventListener("change", () => { this.#needsRender = true; });
 
     this.scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.0));
     const dir1 = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -76,7 +85,10 @@ export class Viewer {
     const animate = () => {
       requestAnimationFrame(animate);
       this.controls.update();
-      this.renderer.render(this.scene, this.camera);
+      if (this.#needsRender) {
+        this.#needsRender = false;
+        this.renderer.render(this.scene, this.camera);
+      }
     };
     animate();
   }
@@ -89,6 +101,7 @@ export class Viewer {
     this.perspCamera.aspect = w / h;
     this.perspCamera.updateProjectionMatrix();
     this.#fitOrthoFrustum();
+    this.#needsRender = true;
   }
 
   // ---------- model ----------
@@ -108,6 +121,9 @@ export class Viewer {
       mesh.geometry.dispose();
     }
     this.meshes = new Map();
+    this.#prevSelected = new Set();
+    this.#prevHidden = new Set();
+    this.#needsRender = true;
   }
 
   // ---------- cameras / views ----------
@@ -143,14 +159,26 @@ export class Viewer {
     this.orthoCamera.zoom = 1;
     this.#fitOrthoFrustum();
     this.controls.update();
+    this.#needsRender = true;
   }
 
-  /** Swaps perspective <-> orthographic, preserving position and target. */
+  /**
+   * Swaps perspective <-> orthographic, preserving position, target and the
+   * effective zoom level. OrbitControls dollies the ortho camera via
+   * camera.zoom (not position), so that zoom is folded back into camera
+   * distance when returning to perspective.
+   */
   toggleProjection() {
     const from = this.camera;
     const to = this.isOrthographic ? this.perspCamera : this.orthoCamera;
     to.position.copy(from.position);
     to.up.copy(from.up);
+    if (this.isOrthographic) {
+      // ortho -> persp: convert accumulated ortho zoom into camera distance
+      const dir = from.position.clone().sub(this.controls.target);
+      const dist = dir.length() / (this.orthoCamera.zoom || 1);
+      to.position.copy(this.controls.target).addScaledVector(dir.normalize(), dist);
+    }
     this.camera = to;
     if (this.isOrthographic) {
       this.orthoCamera.zoom = 1;
@@ -160,24 +188,42 @@ export class Viewer {
     }
     this.controls.object = to;
     this.controls.update();
+    this.#needsRender = true;
     return this.isOrthographic ? "Orthographic" : "Perspective";
   }
 
   // ---------- display state ----------
 
+  /** Applies selection as a delta against the previous set — O(changed). */
   applySelection(selection) {
-    for (const mesh of this.meshes.values()) {
-      const wanted = selection.has(mesh.userData.expressID)
-        ? this.materials.selected
-        : mesh.userData.baseMaterial;
-      if (mesh.material !== wanted) mesh.material = wanted;
+    for (const id of this.#prevSelected) {
+      if (selection.has(id)) continue;
+      const mesh = this.meshes.get(id);
+      if (mesh) mesh.material = mesh.userData.baseMaterial;
     }
+    for (const id of selection) {
+      if (this.#prevSelected.has(id)) continue;
+      const mesh = this.meshes.get(id);
+      if (mesh) mesh.material = this.materials.selected;
+    }
+    this.#prevSelected = new Set(selection);
+    this.#needsRender = true;
   }
 
+  /** Applies visibility as a delta against the previous set — O(changed). */
   applyVisibility(hidden) {
-    for (const mesh of this.meshes.values()) {
-      mesh.visible = !hidden.has(mesh.userData.expressID);
+    for (const id of this.#prevHidden) {
+      if (hidden.has(id)) continue;
+      const mesh = this.meshes.get(id);
+      if (mesh) mesh.visible = true;
     }
+    for (const id of hidden) {
+      if (this.#prevHidden.has(id)) continue;
+      const mesh = this.meshes.get(id);
+      if (mesh) mesh.visible = false;
+    }
+    this.#prevHidden = new Set(hidden);
+    this.#needsRender = true;
   }
 
   // ---------- queries used by picking ----------
@@ -190,14 +236,21 @@ export class Viewer {
       -((clientY - rect.top) / rect.height) * 2 + 1,
     );
     this.raycaster.setFromCamera(ndc, this.camera);
-    const visible = [...this.meshes.values()].filter((m) => m.visible);
-    const hits = this.raycaster.intersectObjects(visible, false);
-    return hits.length ? hits[0].object.userData.expressID : null;
+    // Raycaster does not skip invisible meshes itself, so take the nearest
+    // visible hit (hits come back sorted by distance).
+    const hits = this.raycaster.intersectObjects(this.modelGroup.children, false);
+    for (const hit of hits) {
+      if (hit.object.visible) return hit.object.userData.expressID;
+    }
+    return null;
   }
 
   /**
    * Elements whose projected screen-space AABB intersects the marquee
-   * rectangle (client coords). Hidden elements are excluded.
+   * rectangle (client coords). Hidden elements are excluded. For the
+   * perspective camera, bbox corners at or behind the near plane are
+   * discarded (they would project to near-infinite screen coordinates); an
+   * element is skipped entirely when all its corners are behind the camera.
    */
   elementsInRect(x1, y1, x2, y2) {
     const rect = this.renderer.domElement.getBoundingClientRect();
@@ -205,7 +258,11 @@ export class Viewer {
     const [minY, maxY] = y1 < y2 ? [y1, y2] : [y2, y1];
 
     this.camera.updateMatrixWorld();
-    const corners = new Array(8).fill().map(() => new THREE.Vector3());
+    const viewMatrix = this.camera.matrixWorldInverse;
+    const projMatrix = this.camera.projectionMatrix;
+    const cullNear = !this.isOrthographic;
+    const nearZ = -this.camera.near; // camera space looks down -Z
+    const v = new THREE.Vector3(); // scratch, reused for every corner
     const result = [];
 
     for (const mesh of this.meshes.values()) {
@@ -214,22 +271,23 @@ export class Viewer {
       if (!bb) continue;
 
       let sMinX = Infinity, sMaxX = -Infinity, sMinY = Infinity, sMaxY = -Infinity;
-      let behind = 0;
-      let c = 0;
-      for (const x of [bb.min.x, bb.max.x])
-        for (const y of [bb.min.y, bb.max.y])
-          for (const z of [bb.min.z, bb.max.z])
-            corners[c++].set(x, y, z);
+      let usable = 0;
 
-      for (const corner of corners) {
-        const v = corner.clone().project(this.camera);
-        if (v.z > 1) { behind++; continue; } // beyond far plane / behind camera
-        const sx = rect.left + ((v.x + 1) / 2) * rect.width;
-        const sy = rect.top + ((1 - v.y) / 2) * rect.height;
-        sMinX = Math.min(sMinX, sx); sMaxX = Math.max(sMaxX, sx);
-        sMinY = Math.min(sMinY, sy); sMaxY = Math.max(sMaxY, sy);
+      for (const x of [bb.min.x, bb.max.x]) {
+        for (const y of [bb.min.y, bb.max.y]) {
+          for (const z of [bb.min.z, bb.max.z]) {
+            v.set(x, y, z).applyMatrix4(viewMatrix); // world -> camera space
+            if (cullNear && v.z >= nearZ) continue;  // at/behind the near plane
+            v.applyMatrix4(projMatrix);              // camera -> NDC (divides by w)
+            const sx = rect.left + ((v.x + 1) / 2) * rect.width;
+            const sy = rect.top + ((1 - v.y) / 2) * rect.height;
+            sMinX = Math.min(sMinX, sx); sMaxX = Math.max(sMaxX, sx);
+            sMinY = Math.min(sMinY, sy); sMaxY = Math.max(sMaxY, sy);
+            usable++;
+          }
+        }
       }
-      if (behind === 8) continue;
+      if (!usable) continue;
 
       const intersects = sMaxX >= minX && sMinX <= maxX && sMaxY >= minY && sMinY <= maxY;
       if (intersects) result.push(mesh.userData.expressID);

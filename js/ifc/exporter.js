@@ -3,11 +3,11 @@
  *
  * Strategy: open a FRESH model from the pristine original file bytes, append
  * one IfcPropertySet (Name = "SZC-ARMF") + IfcRelDefinesByProperties per
- * element that has SZC-ARMF rows, save, close. Because the source bytes are
- * identical to what the viewer opened, express IDs line up, so the viewer's
- * GlobalId -> expressID map is valid in the fresh copy. Working on a copy
- * guarantees the in-viewer model is never mutated and repeated exports never
- * accumulate duplicate psets.
+ * element that has SZC-ARMF rows, save, close. GlobalIds are resolved
+ * against the export model itself (web-ifc's guid map), so the psets attach
+ * to the right elements even if the viewer model ever diverges; the viewer's
+ * map is only a fallback. Working on a copy guarantees the in-viewer model
+ * is never mutated and repeated exports never accumulate duplicate psets.
  *
  * All new entities are appended after the existing maximum express ID
  * (web-ifc's WriteLine assigns max+1); existing lines are never rewritten.
@@ -18,10 +18,11 @@ import { WebIFC } from "./modelLoader.js";
  * @param api        initialised IfcAPI
  * @param buffer     pristine Uint8Array of the original file
  * @param armfByGid  { GlobalId: [{ module, value }, ...] }
- * @param gidToExpr  Map<GlobalId, expressID> from the viewer model
+ * @param gidToExpr  Map<GlobalId, expressID> from the viewer model (fallback)
  * @returns { bytes: Uint8Array, psetsWritten: number, skipped: string[] }
  */
 export function buildExport(api, buffer, armfByGid, gidToExpr) {
+  if (!buffer) throw new Error("No model is loaded.");
   const modelID = api.OpenModel(buffer.slice()); // slice: OpenModel may transfer the buffer
   try {
     const schemaName = api.GetModelSchema(modelID);
@@ -35,7 +36,7 @@ export function buildExport(api, buffer, armfByGid, gidToExpr) {
     const skipped = [];
 
     for (const [globalId, rows] of Object.entries(armfByGid)) {
-      const expressID = gidToExpr.get(globalId);
+      const expressID = api.GetExpressIdFromGuid(modelID, globalId) ?? gidToExpr.get(globalId);
       if (!expressID) { skipped.push(globalId); continue; }
 
       const props = rows

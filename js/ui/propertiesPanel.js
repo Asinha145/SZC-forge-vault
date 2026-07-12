@@ -36,7 +36,12 @@ export class PropertiesPanel {
     }
 
     this.title.textContent = `Properties — ${el.name ?? el.globalId}`;
-    const tabNames = [ELEMENT_TAB, ...[...el.psets.keys()].sort((a, b) => a.localeCompare(b)), ARMF_TAB];
+    // A re-imported export may contain a source pset named SZC-ARMF; the
+    // editable tab (seeded from it, see armfTab.js) is the single tab for it.
+    const sourceTabs = [...el.psets.keys()]
+      .filter((n) => n !== ARMF_TAB)
+      .sort((a, b) => a.localeCompare(b));
+    const tabNames = [ELEMENT_TAB, ...sourceTabs, ARMF_TAB];
     if (!tabNames.includes(this.activeTab)) this.activeTab = ELEMENT_TAB;
 
     this.tabsNav.innerHTML = "";

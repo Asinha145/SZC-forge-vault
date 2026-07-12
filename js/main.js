@@ -21,6 +21,21 @@ new FilterPanel(state);
 new PropertiesPanel(state);
 attachPicking(viewer, state, $("marquee"));
 
+// Debug/inspection handle (also used by the automated smoke test). Defined
+// once with live getters so it can never go stale across model reloads.
+window.ifcModel = {
+  state,
+  viewer,
+  get api() { return state.api; },
+  get modelID() { return state.modelID; },
+  get filename() { return state.filename; },
+  get elements() { return state.elements; },
+  get globalIdToExpress() { return state.globalIdToExpress; },
+  get filterIndex() { return state.filterIndex; },
+  selection: () => [...state.selection],
+  hidden: () => [...state.hidden],
+};
+
 const MODEL_BUTTONS = [
   "btn-hide", "btn-hide-unselected", "btn-unhide-selected", "btn-unhide-all",
   "btn-view-top", "btn-view-bottom", "btn-view-left", "btn-view-right",
@@ -49,56 +64,55 @@ state.addEventListener("model-cleared", updateStatus);
 
 // ---------- loading ----------
 
-let api = null;
-const apiReady = initIfcApi().then((a) => { api = a; });
+const apiReady = initIfcApi().then((api) => { state.api = api; });
+
+// Monotonic token: a newer load supersedes any in-flight one, so overlapping
+// drops can't finish out of order or fight over shared state.
+let loadToken = 0;
 
 async function loadFile(file) {
+  const token = ++loadToken;
   const loading = $("loading");
   loading.hidden = false;
   $("loading-text").textContent = `Loading ${file.name}…`;
+
+  let modelID = -1;
   try {
     await apiReady;
+    const api = state.api;
     const buffer = new Uint8Array(await file.arrayBuffer());
+    if (token !== loadToken) return; // superseded by a newer load
 
-    if (state.hasModel) {
-      viewer.clearModel();
-      state.clearModel();
-    }
-
-    const modelID = openModel(api, buffer.slice()); // keep `buffer` pristine for export
+    // Build everything for the new file BEFORE touching the current model,
+    // so a corrupt file leaves the loaded model fully intact.
+    modelID = openModel(api, buffer.slice()); // keep `buffer` pristine for export
     const { meshes, bbox } = buildMeshes(api, modelID, viewer.materials);
     const { elements, globalIdToExpress, filterIndex } =
       buildPropertyIndex(api, modelID, [...meshes.keys()]);
 
-    state.api = api;
+    if (token !== loadToken) { // superseded mid-parse — discard this model
+      api.CloseModel(modelID);
+      return;
+    }
+
+    if (state.hasModel) state.clearModel(); // closes the previous modelID
     state.setModel({
       modelID, filename: file.name, originalBuffer: buffer,
       elements, globalIdToExpress, filterIndex,
     });
-    viewer.setModel(meshes, bbox);
+    viewer.setModel(meshes, bbox); // disposes the previous scene meshes
 
     for (const id of MODEL_BUTTONS) $(id).disabled = false;
     $("dropzone").classList.add("hidden");
-
-    // Debug/inspection handle (also used by the automated smoke test).
-    window.ifcModel = {
-      api,
-      modelID,
-      filename: file.name,
-      elements,
-      globalIdToExpress,
-      filterIndex,
-      state,
-      viewer,
-      selection: () => [...state.selection],
-      hidden: () => [...state.hidden],
-    };
     console.log(`Loaded ${file.name}: ${elements.size} elements, ${filterIndex.size} property sets (window.ifcModel available)`);
   } catch (err) {
+    if (modelID !== -1) {
+      try { state.api.CloseModel(modelID); } catch { /* already closed */ }
+    }
     console.error("Failed to load IFC:", err);
     alert(`Failed to load IFC file:\n${err.message ?? err}`);
   } finally {
-    loading.hidden = true;
+    if (token === loadToken) loading.hidden = true;
   }
 }
 
@@ -145,9 +159,10 @@ $("btn-projection").addEventListener("click", (e) => {
 
 $("btn-export").addEventListener("click", () => {
   try {
+    if (!state.hasModel) return;
     const armfByGid = loadAllArmf(state.filename);
     const { bytes, psetsWritten, skipped } =
-      buildExport(api, state.originalBuffer, armfByGid, state.globalIdToExpress);
+      buildExport(state.api, state.originalBuffer, armfByGid, state.globalIdToExpress);
     const name = downloadExport(bytes, state.filename);
     if (skipped.length) console.warn("Export: GlobalIds not found in model:", skipped);
     console.log(`Exported ${name}: ${psetsWritten} SZC-ARMF property set(s) written`);

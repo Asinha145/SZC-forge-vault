@@ -3,11 +3,9 @@
  * visibility sets. All mutations go through methods that emit events, so the
  * viewer and UI panels stay in sync without referencing each other.
  *
- * Events dispatched (on the instance, an EventTarget):
- *   "model-loaded"       — a model finished loading
- *   "model-cleared"      — previous model removed
- *   "selection-changed"  — detail: { selection: Set, lastSelected: number|null }
- *   "visibility-changed" — detail: { hidden: Set }
+ * Events dispatched (on the instance, an EventTarget) — listeners read the
+ * current state directly off the instance, events carry no payload:
+ *   "model-loaded", "model-cleared", "selection-changed", "visibility-changed"
  */
 export class AppState extends EventTarget {
   constructor() {
@@ -39,7 +37,7 @@ export class AppState extends EventTarget {
     this.selection = new Set();
     this.hidden = new Set();
     this.lastSelected = null;
-    this.dispatchEvent(new CustomEvent("model-cleared"));
+    this.dispatchEvent(new Event("model-cleared"));
   }
 
   setModel({ modelID, filename, originalBuffer, elements, globalIdToExpress, filterIndex }) {
@@ -49,15 +47,13 @@ export class AppState extends EventTarget {
     this.elements = elements;
     this.globalIdToExpress = globalIdToExpress;
     this.filterIndex = filterIndex;
-    this.dispatchEvent(new CustomEvent("model-loaded"));
+    this.dispatchEvent(new Event("model-loaded"));
   }
 
   // ---------- selection ----------
 
   #emitSelection() {
-    this.dispatchEvent(new CustomEvent("selection-changed", {
-      detail: { selection: this.selection, lastSelected: this.lastSelected },
-    }));
+    this.dispatchEvent(new Event("selection-changed"));
   }
 
   setSelection(ids) {
@@ -96,7 +92,7 @@ export class AppState extends EventTarget {
   // ---------- visibility ----------
 
   #emitVisibility() {
-    this.dispatchEvent(new CustomEvent("visibility-changed", { detail: { hidden: this.hidden } }));
+    this.dispatchEvent(new Event("visibility-changed"));
   }
 
   hideSelected() {

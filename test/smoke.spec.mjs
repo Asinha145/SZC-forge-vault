@@ -17,26 +17,15 @@ import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { fileURLToPath } from "node:url";
+import { FIXTURE, loadModel } from "./helpers.mjs";
 
 const require = createRequire(import.meta.url);
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const FIXTURE = "C:\\Users\\ASinha\\OneDrive - Laing ORourke\\Documents\\SWC\\Job\\Solving Dataset\\2hwx0208ac1_run\\input\\2HWX0208AC1.ifc";
 const BASE = "http://localhost:8177";
 
 test.beforeAll(() => {
   if (!fs.existsSync(FIXTURE)) throw new Error(`Fixture IFC not found: ${FIXTURE}`);
 });
-
-async function loadModel(page) {
-  await page.setInputFiles("#file-input", FIXTURE);
-  await page.waitForFunction(
-    () => window.ifcModel && window.ifcModel.elements.size > 0,
-    null,
-    { timeout: 90_000 },
-  );
-}
 
 test("end-to-end smoke", async ({ page }) => {
   const consoleErrors = [];
@@ -167,6 +156,18 @@ test("end-to-end smoke", async ({ page }) => {
     expect(await page.evaluate(() => window.ifcModel.selection().length)).toBeGreaterThan(0);
   });
 
+  await test.step("selection made on the canvas clears picked tree values", async () => {
+    // the click/box-select steps above changed the selection outside the
+    // panel — stale picks must not survive, or the next ctrl+click would
+    // silently re-impose them over the canvas selection
+    expect(await page.locator("#value-list li.active").count()).toBe(0);
+    const items = page.locator("#value-list li");
+    const count1 = Number(await items.nth(1).locator(".count").textContent());
+    await items.nth(1).click({ modifiers: ["Control"] });
+    expect(await page.evaluate(() => window.ifcModel.selection().length)).toBe(count1);
+    await page.click("#btn-clear-filter");
+  });
+
   await test.step("orbit, pan and zoom change the camera without selecting", async () => {
     const camPos = () => page.evaluate(() => window.ifcModel.viewer.camera.position.toArray());
     const selCount = () => page.evaluate(() => window.ifcModel.selection().length);
@@ -205,8 +206,21 @@ test("end-to-end smoke", async ({ page }) => {
     await page.click("#btn-projection");
     await expect(page.locator("#btn-projection")).toHaveText("Orthographic");
     expect(await page.evaluate(() => window.ifcModel.viewer.isOrthographic)).toBe(true);
+
+    // orthographic zoom must survive the toggle back as camera distance
+    const box = await page.locator("#viewport canvas").boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    const distBefore = await page.evaluate(() =>
+      window.ifcModel.viewer.camera.position.distanceTo(window.ifcModel.viewer.controls.target));
+    await page.mouse.wheel(0, -240);
+    await page.mouse.wheel(0, -240);
+    await page.waitForTimeout(100);
+    expect(await page.evaluate(() => window.ifcModel.viewer.orthoCamera.zoom)).toBeGreaterThan(1);
     await page.click("#btn-projection");
     await expect(page.locator("#btn-projection")).toHaveText("Perspective");
+    const distAfter = await page.evaluate(() =>
+      window.ifcModel.viewer.camera.position.distanceTo(window.ifcModel.viewer.controls.target));
+    expect(distAfter).toBeLessThan(distBefore * 0.99);
 
     for (const view of ["top", "bottom", "left", "right", "front", "back", "iso"]) {
       await page.click(`#btn-view-${view}`);
@@ -257,7 +271,7 @@ test("end-to-end smoke", async ({ page }) => {
   });
 
   await test.step("exported file re-parses; SZC-ARMF pset attached to correct GlobalId", async () => {
-    const WebIFC = require("../lib/web-ifc-api-node.js");
+    const WebIFC = require("web-ifc");
     const api = new WebIFC.IfcAPI();
     await api.Init();
     const modelID = api.OpenModel(new Uint8Array(fs.readFileSync(exportedPath)));
@@ -313,6 +327,25 @@ test("end-to-end smoke", async ({ page }) => {
     );
     expect(saved).toHaveLength(2);
     expect(saved.some((r) => r.module === "Temp")).toBe(false);
+  });
+
+  await test.step("re-importing the exported file round-trips SZC-ARMF", async () => {
+    await page.setInputFiles("#file-input", exportedPath);
+    const exportedName = path.basename(exportedPath);
+    await page.waitForFunction(
+      (name) => window.ifcModel.filename === name && window.ifcModel.elements.size > 0,
+      exportedName,
+      { timeout: 90_000 },
+    );
+    const expr = await page.evaluate((gid) => window.ifcModel.globalIdToExpress.get(gid), pickedGid);
+    await page.evaluate((id) => window.ifcModel.state.setSelection([id]), expr);
+    // exactly one SZC-ARMF tab even though the source file now contains the pset
+    await expect(page.locator('#tabs .tab[data-tab="SZC-ARMF"]')).toHaveCount(1);
+    await page.click('#tabs .tab[data-tab="SZC-ARMF"]');
+    // editable table is seeded from the source pset (fresh filename, no localStorage)
+    await expect(page.locator("#armf-table tbody tr:nth-child(1) .armf-value-input")).toHaveValue("F1F2");
+    await expect(page.locator("#armf-table tbody tr:nth-child(2) .armf-module-input")).toHaveValue("Checked By");
+    await expect(page.locator("#armf-table tbody tr:nth-child(2) .armf-value-input")).toHaveValue("AS");
   });
 
   await test.step("no console errors", async () => {

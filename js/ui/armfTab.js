@@ -6,11 +6,22 @@
  * (storage.js) — no save button, and a page reload restores the data.
  * Purely additive: source IFC metadata is never touched.
  */
-import { getArmfRows, saveArmfRows } from "../storage.js";
+import { getArmfRows, saveArmfRows, hasSavedArmf } from "../storage.js";
 
 export function renderArmfTab(state, el) {
   const wrap = document.createElement("div");
-  const rows = getArmfRows(state.filename, el.globalId);
+
+  if (!el.globalId) {
+    // Storage and export are keyed by GlobalId — without one, edits could
+    // never round-trip, so surface that instead of silently losing data.
+    const note = document.createElement("p");
+    note.className = "hint";
+    note.textContent = "This element has no GlobalId in the IFC, so SZC-ARMF data cannot be attached to it.";
+    wrap.appendChild(note);
+    return wrap;
+  }
+
+  const rows = initialRows(state, el);
 
   const table = document.createElement("table");
   table.className = "props";
@@ -87,4 +98,26 @@ export function renderArmfTab(state, el) {
 
   wrap.append(table, addBtn, note);
   return wrap;
+}
+
+/**
+ * Saved rows win; otherwise, when the loaded file already carries an
+ * SZC-ARMF pset (a re-imported export), seed the editable table from it so
+ * previously exported values round-trip instead of hiding behind a
+ * duplicate read-only tab.
+ */
+function initialRows(state, el) {
+  if (hasSavedArmf(state.filename, el.globalId)) {
+    return getArmfRows(state.filename, el.globalId);
+  }
+  const source = el.psets.get("SZC-ARMF");
+  if (source && source.size) {
+    const rows = [{ module: "Part Type 2", value: String(source.get("Part Type 2") ?? "") }];
+    for (const [module, value] of source) {
+      if (module === "Part Type 2") continue;
+      rows.push({ module, value: String(value ?? "") });
+    }
+    return rows;
+  }
+  return getArmfRows(state.filename, el.globalId);
 }

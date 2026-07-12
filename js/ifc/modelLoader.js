@@ -107,8 +107,9 @@ function mergeParts(parts) {
     for (let v = 0; v < n; v++) {
       pos.fromArray(p.positions, v * 3).applyMatrix4(p.matrix);
       nrm.fromArray(p.normals, v * 3).applyMatrix3(normalMatrix).normalize();
-      positions.set([pos.x, pos.y, pos.z], (vOff + v) * 3);
-      normals.set([nrm.x, nrm.y, nrm.z], (vOff + v) * 3);
+      const o = (vOff + v) * 3;
+      positions[o] = pos.x; positions[o + 1] = pos.y; positions[o + 2] = pos.z;
+      normals[o] = nrm.x; normals[o + 1] = nrm.y; normals[o + 2] = nrm.z;
     }
     colors.set(p.colors, vOff * 3);
     for (let i = 0; i < p.indices.length; i++) indices[iOff + i] = p.indices[i] + vOff;

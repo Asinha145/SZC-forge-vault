@@ -23,6 +23,7 @@ export class FilterPanel {
     this.valueItems = [];      // [{ li, ids, key }] in render order
     this.pickedKeys = new Set(); // value keys currently picked
     this.anchorIndex = null;   // range anchor for shift+click
+    this.applying = false;     // true while this panel itself sets the selection
 
     this.psetSelect.addEventListener("change", () => this.#renderProps());
     this.propSelect.addEventListener("change", () => this.#renderValues());
@@ -35,6 +36,15 @@ export class FilterPanel {
 
     state.addEventListener("model-loaded", () => this.populate());
     state.addEventListener("model-cleared", () => this.reset());
+    // A selection made elsewhere (canvas click, box select) invalidates the
+    // picked values — otherwise the next ctrl/shift+click would silently
+    // re-impose them over the user's newer selection.
+    state.addEventListener("selection-changed", () => {
+      if (this.applying) return;
+      this.#resetPicks();
+      this.#applyPickClasses();
+      this.status.textContent = "";
+    });
   }
 
   reset() {
@@ -52,7 +62,7 @@ export class FilterPanel {
     const psetNames = [...this.state.filterIndex.keys()].sort((a, b) => a.localeCompare(b));
     this.psetSelect.innerHTML =
       `<option value="">— choose a property set —</option>` +
-      psetNames.map((n) => `<option value="${escapeAttr(n)}">${escapeHtml(n)}</option>`).join("");
+      psetNames.map((n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
     this.psetSelect.disabled = false;
     this.propSelect.disabled = false;
     this.#renderProps();
@@ -63,7 +73,7 @@ export class FilterPanel {
     const names = propIndex ? [...propIndex.keys()].sort((a, b) => a.localeCompare(b)) : [];
     this.propSelect.innerHTML =
       `<option value="">— choose a property —</option>` +
-      names.map((n) => `<option value="${escapeAttr(n)}">${escapeHtml(n)}</option>`).join("");
+      names.map((n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
     this.#renderValues();
   }
 
@@ -115,7 +125,12 @@ export class FilterPanel {
       pickedCount++;
       for (const id of it.ids) union.add(id);
     }
-    this.state.setSelection([...union]);
+    this.applying = true;
+    try {
+      this.state.setSelection([...union]);
+    } finally {
+      this.applying = false;
+    }
     this.status.textContent = union.size
       ? `${union.size} element${union.size === 1 ? "" : "s"} from ${pickedCount} value${pickedCount === 1 ? "" : "s"}`
       : "";
@@ -133,10 +148,9 @@ export class FilterPanel {
   }
 }
 
+/** Escapes text for both element content and (double-quoted) attributes. */
 export function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   }[c]));
 }
-
-function escapeAttr(s) { return escapeHtml(s); }

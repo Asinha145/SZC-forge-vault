@@ -98,7 +98,7 @@ The test fixture is
 ```
 index.html               layout: toolbar / filter panel / viewport / property tabs
 css/style.css
-lib/                     vendored: web-ifc 0.0.77 (browser + node + wasm), three.js 0.185
+lib/                     vendored: web-ifc 0.0.77 (browser build + wasm), three.js 0.185
 js/
   main.js                bootstrap + wiring only (no domain logic)
   state.js               selection/visibility state, pub-sub events
@@ -139,9 +139,10 @@ test/                    Playwright smoke test + static server + QA screenshots
 
 ## Extension points
 
-- **More custom psets**: `armfTab.js`/`storage.js`/`exporter.js` take the
-  pset name as data — generalising to N custom psets is a parameterisation,
-  not a refactor.
+- **More custom psets**: the SZC-ARMF name and row schema live in
+  `armfTab.js`/`storage.js`/`exporter.js`; a second custom pset means
+  parameterising those three modules by pset name (including the
+  localStorage key scheme) — contained, but a deliberate step, not free.
 - **Property editing / search / colour overrides**: `propertyIndex.js`
   already holds the full hierarchy in Maps; UI panels are isolated modules
   subscribed to `state` events.
