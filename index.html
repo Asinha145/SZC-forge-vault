@@ -14,7 +14,7 @@
   <header id="toolbar">
     <div class="tb-group" id="tb-file">
       <span id="brand">SZC Forge Vault</span>
-      <label id="open-label" class="btn" for="file-input" title="Open an IFC file">Open IFC…</label>
+      <label id="open-label" class="btn" for="file-input" title="Open an IFC file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>Open IFC…</label>
       <input type="file" id="file-input" accept=".ifc" hidden>
     </div>
     <div class="tb-group" id="tb-visibility" title="Visibility (operates on current selection)">
@@ -34,7 +34,7 @@
       <button class="btn" id="btn-projection" disabled title="Toggle perspective / orthographic">Perspective</button>
     </div>
     <div class="tb-group tb-right">
-      <button class="btn btn-primary" id="btn-export" disabled title="Export IFC with SZC-ARMF property sets">Export</button>
+      <button class="btn btn-primary" id="btn-export" disabled title="Export IFC with SZC-ARMF property sets"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Export</button>
     </div>
   </header>
 
@@ -45,8 +45,8 @@
       <select id="pset-select" disabled><option value="">— load a model —</option></select>
       <label class="field-label" for="prop-select">Property</label>
       <select id="prop-select" disabled><option value="">—</option></select>
-      <label class="field-label">Values</label>
-      <ul id="value-list"></ul>
+      <label class="field-label" id="value-list-label">Values</label>
+      <ul id="value-list" role="listbox" aria-multiselectable="true" aria-labelledby="value-list-label"></ul>
       <div id="filter-footer">
         <span id="filter-status"></span>
         <button class="btn" id="btn-clear-filter">Clear</button>
@@ -71,6 +71,8 @@
       <div id="tab-content"><p class="hint">Click an element in the 3D view, or filter from the selection tree.</p></div>
     </aside>
   </main>
+
+  <div id="toast" role="status" aria-live="polite" hidden></div>
 
   <footer id="statusbar">
     <span id="status-file">No model loaded</span>

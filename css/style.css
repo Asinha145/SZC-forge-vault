@@ -4,9 +4,11 @@
   --bg-panel-2: #2d323b;
   --border: #3a404b;
   --text: #d7dce3;
-  --text-dim: #8b93a1;
+  --text-dim: #9aa3b2; /* >=4.5:1 on panel surfaces */
   --accent: #2f8ef7;
   --accent-dim: #1f5faa;
+  --success: #2ea06a;
+  --transition-fast: 150ms ease-out;
 }
 
 * { box-sizing: border-box; }
@@ -14,14 +16,35 @@
 /* The hidden attribute must always win, even over display:flex/grid rules. */
 [hidden] { display: none !important; }
 
+/* Keyboard users need a visible focus indicator everywhere. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 html, body {
   margin: 0;
   height: 100%;
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
-  font: 13px/1.45 "Segoe UI", system-ui, sans-serif;
+  font: 13px/1.5 "Segoe UI", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums; /* counts/status don't jitter as they change */
 }
+
+/* Dark scrollbars to match the theme (WebKit + Firefox). */
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+::-webkit-scrollbar-track { background: transparent; }
 
 body { display: flex; flex-direction: column; }
 
@@ -42,17 +65,22 @@ body { display: flex; flex-direction: column; }
 .tb-right { margin-left: auto; }
 
 .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: var(--bg-panel-2);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 4px 10px;
+  padding: 5px 11px;
   font: inherit;
   cursor: pointer;
   user-select: none;
+  transition: border-color var(--transition-fast), background-color var(--transition-fast), color var(--transition-fast);
 }
 .btn:hover:not(:disabled) { border-color: var(--accent); }
 .btn:active:not(:disabled) { background: var(--accent-dim); }
+.btn svg { width: 14px; height: 14px; flex: 0 0 auto; }
 .btn:disabled { opacity: 0.45; cursor: default; }
 .btn-primary { background: var(--accent-dim); border-color: var(--accent); }
 .btn-primary:hover:not(:disabled) { background: var(--accent); color: #fff; }
@@ -113,9 +141,17 @@ select {
   justify-content: space-between;
   gap: 8px;
   border-bottom: 1px solid var(--border);
+  transition: background-color var(--transition-fast);
 }
 #value-list li:last-child { border-bottom: none; }
 #value-list li:hover { background: var(--accent-dim); }
+#value-list li:focus-visible { outline-offset: -2px; }
+#value-list .empty-hint {
+  padding: 10px 8px;
+  color: var(--text-dim);
+  cursor: default;
+}
+#value-list .empty-hint:hover { background: transparent; }
 #value-list li.active { background: var(--accent); color: #fff; }
 #value-list li .count { color: var(--text-dim); }
 #value-list li.active .count { color: #dbe9ff; }
@@ -173,7 +209,7 @@ select {
 #tabs .tab {
   background: var(--bg-panel-2);
   border: 1px solid var(--border);
-  border-bottom: none;
+  border-bottom: 2px solid transparent;
   border-radius: 4px 4px 0 0;
   color: var(--text-dim);
   padding: 4px 8px;
@@ -183,8 +219,15 @@ select {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast);
 }
-#tabs .tab.active { background: var(--accent-dim); color: #fff; border-color: var(--accent); }
+#tabs .tab:hover { color: var(--text); }
+#tabs .tab.active {
+  background: var(--accent-dim);
+  color: #fff;
+  border-color: var(--accent);
+  border-bottom-color: var(--accent);
+}
 
 #tab-content { flex: 1 1 auto; overflow: auto; padding-top: 6px; }
 #tab-content .hint, #statusbar .hint { color: var(--text-dim); }
@@ -227,6 +270,23 @@ table.props td.prop-name { color: var(--text-dim); width: 45%; }
 }
 .armf-remove-row:hover { color: #ff7b72; border-color: #ff7b72; }
 .armf-note { color: var(--text-dim); font-size: 11px; margin-top: 6px; }
+
+/* ---------- toast ---------- */
+#toast {
+  position: fixed;
+  bottom: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-panel-2);
+  color: var(--text);
+  border: 1px solid var(--success);
+  border-radius: 6px;
+  padding: 8px 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  max-width: 70vw;
+}
+#toast.warn { border-color: var(--accent); }
 
 /* ---------- status bar ---------- */
 #statusbar {

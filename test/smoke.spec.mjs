@@ -103,6 +103,17 @@ test("end-to-end smoke", async ({ page }) => {
     expect(await selCount()).toBe(filterSelectedCount);
   });
 
+  await test.step("value list is keyboard accessible", async () => {
+    const items = page.locator("#value-list li");
+    const count1 = Number(await items.nth(1).locator(".count").textContent());
+    await items.nth(1).focus();
+    await page.keyboard.press("Enter");
+    expect(await page.evaluate(() => window.ifcModel.selection().length)).toBe(count1);
+    expect(await items.nth(1).getAttribute("aria-selected")).toBe("true");
+    await items.nth(0).click(); // restore the single-value pick for later steps
+    expect(await page.evaluate(() => window.ifcModel.selection().length)).toBe(filterSelectedCount);
+  });
+
   await test.step("visibility toolbar", async () => {
     await page.click("#btn-hide");
     expect(await page.evaluate(() => window.ifcModel.hidden().length)).toBe(filterSelectedCount);

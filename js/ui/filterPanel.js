@@ -84,15 +84,32 @@ export class FilterPanel {
     this.status.textContent = "";
     this.valueItems = [];
     this.#resetPicks();
-    if (!valueIndex) return;
+    if (!valueIndex) {
+      if (this.state.hasModel) {
+        const hint = document.createElement("li");
+        hint.className = "empty-hint";
+        hint.textContent = "Choose a property set and property to list its values.";
+        this.valueList.appendChild(hint);
+      }
+      return;
+    }
 
     const entries = [...valueIndex.entries()].sort((a, b) =>
       a[0].localeCompare(b[0], undefined, { numeric: true }));
     entries.forEach(([valueStr, ids], index) => {
       const li = document.createElement("li");
       li.className = "value-item";
+      li.setAttribute("role", "option");
+      li.setAttribute("aria-selected", "false");
+      li.tabIndex = 0;
       li.innerHTML = `<span class="v">${escapeHtml(valueStr)}</span><span class="count">${ids.size}</span>`;
       li.addEventListener("click", (e) => this.#onValueClick(e, index));
+      li.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          this.#onValueClick(e, index); // ctrl/shift modifiers carry through
+        }
+      });
       this.valueList.appendChild(li);
       this.valueItems.push({ li, ids, key: valueStr });
     });
@@ -138,7 +155,9 @@ export class FilterPanel {
 
   #applyPickClasses() {
     for (const it of this.valueItems) {
-      it.li.classList.toggle("active", this.pickedKeys.has(it.key));
+      const picked = this.pickedKeys.has(it.key);
+      it.li.classList.toggle("active", picked);
+      it.li.setAttribute("aria-selected", String(picked));
     }
   }
 

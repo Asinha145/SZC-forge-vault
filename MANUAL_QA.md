@@ -48,5 +48,12 @@ Screenshots of the checked states are in `test/qa-screenshots/`
 - ✅ Re-parses in web-ifc; SZC-ARMF pset attached to the correct GlobalId with the entered Module/Value pairs
 - ✅ Original entities untouched (same element counts, original psets intact)
 
+## Accessibility & feedback (ui-ux-pro-max pass)
+- ✅ Visible focus rings on all interactive elements (keyboard Tab order matches visual order)
+- ✅ Value list operable by keyboard (Tab to a value, Enter/Space selects; Ctrl/Shift modifiers work)
+- ✅ Export shows a success toast (aria-live polite, auto-dismisses ~4s); warning toast when no SZC-ARMF data
+- ✅ prefers-reduced-motion disables spinner/transitions
+- ✅ Empty state hint in the values list before a property is chosen
+
 ## Console
 - ✅ No console errors or page errors during any of the above (asserted by the automated test)

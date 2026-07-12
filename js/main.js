@@ -36,6 +36,17 @@ window.ifcModel = {
   hidden: () => [...state.hidden],
 };
 
+// Non-blocking success/notice feedback (auto-dismisses; aria-live announces it).
+let toastTimer = null;
+function showToast(message, { warn = false } = {}) {
+  const toast = $("toast");
+  toast.textContent = message;
+  toast.classList.toggle("warn", warn);
+  toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toast.hidden = true; }, 4000);
+}
+
 const MODEL_BUTTONS = [
   "btn-hide", "btn-hide-unselected", "btn-unhide-selected", "btn-unhide-all",
   "btn-view-top", "btn-view-bottom", "btn-view-left", "btn-view-right",
@@ -166,8 +177,10 @@ $("btn-export").addEventListener("click", () => {
     const name = downloadExport(bytes, state.filename);
     if (skipped.length) console.warn("Export: GlobalIds not found in model:", skipped);
     console.log(`Exported ${name}: ${psetsWritten} SZC-ARMF property set(s) written`);
-    if (!psetsWritten) {
-      alert("Export created, but no SZC-ARMF data was found to append.\nFill in the SZC-ARMF tab for at least one element first (both Module and Value cells).");
+    if (psetsWritten) {
+      showToast(`Exported ${name} — SZC-ARMF written to ${psetsWritten} element${psetsWritten === 1 ? "" : "s"}`);
+    } else {
+      showToast("Exported without SZC-ARMF data — fill in the SZC-ARMF tab (Module and Value) for at least one element first.", { warn: true });
     }
   } catch (err) {
     console.error("Export failed:", err);
